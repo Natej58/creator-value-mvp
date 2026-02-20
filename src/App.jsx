@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './App.css'
 
 // ── Constants (DO NOT CHANGE) ──────────────────────────────────────────────
@@ -22,8 +22,7 @@ const PRESETS = {
 const REV_SHARE = 0.15  // Fixed at Normal — not exposed to user
 
 // ── Lead capture ───────────────────────────────────────────────────────────
-// Set your Formspree form URL to start receiving emails: https://formspree.io
-const FORMSPREE_ENDPOINT = '' // e.g. 'https://formspree.io/f/abcdefgh'
+const WEB3FORMS_KEY = '5a5b49e4-0f55-4dc6-9d07-3be03c9426fa'
 
 // DO NOT CHANGE THIS FORMULA:
 function calcFunnel(v, l, c, s, campaignType) {
@@ -106,35 +105,41 @@ export default function App() {
     const trimmed = email.trim()
     if (!trimmed) return
 
-    const lead = {
-      email:           trimmed,
-      views:           v,
-      likes:           l,
-      comments:        c,
-      shares:          s,
-      calculatedValue: Math.round(payout),
-      ts:              Date.now(),
+    try {
+      const response = await fetch('https://api.web3forms.com/submit', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          access_key:      WEB3FORMS_KEY,
+          email:           trimmed,
+          avgViews:        v,
+          avgLikes:        l,
+          avgComments:     c,
+          avgShares:       s,
+          calculatedValue: `${fmtWhole(low)} – ${fmtWhole(high)}`,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setEmail('')
+        setEmailSent(true)
+      } else {
+        console.error('Web3Forms submission failed', result)
+      }
+    } catch (error) {
+      console.error('Web3Forms error:', error)
     }
-
-    // Always persist locally
-    const existing = JSON.parse(localStorage.getItem('creator_leads') || '[]')
-    existing.push(lead)
-    localStorage.setItem('creator_leads', JSON.stringify(existing))
-    console.log('New creator lead:', lead)
-
-    // Also POST to Formspree if configured
-    if (FORMSPREE_ENDPOINT) {
-      try {
-        await fetch(FORMSPREE_ENDPOINT, {
-          method:  'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body:    JSON.stringify(lead),
-        })
-      } catch (_) { /* silent — lead is saved locally regardless */ }
-    }
-
-    setEmailSent(true)
   }
+
+  // Auto-hide success message after 4 seconds
+  useEffect(() => {
+    if (emailSent) {
+      const timer = setTimeout(() => setEmailSent(false), 4000)
+      return () => clearTimeout(timer)
+    }
+  }, [emailSent])
 
   const handleShare = () => {
     navigator.clipboard.writeText(shareText)
