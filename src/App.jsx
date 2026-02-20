@@ -293,7 +293,7 @@ export default function App() {
                     required
                   />
                   <button type="submit" className="email-btn">
-                    Get brand deals that actually pay this
+                    Get Early Access
                   </button>
                   <p className="email-urgency">
                     Early creators will get priority access to brand deals
