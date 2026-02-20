@@ -21,6 +21,10 @@ const PRESETS = {
 
 const REV_SHARE = 0.15  // Fixed at Normal — not exposed to user
 
+// ── Lead capture ───────────────────────────────────────────────────────────
+// Set your Formspree form URL to start receiving emails: https://formspree.io
+const FORMSPREE_ENDPOINT = '' // e.g. 'https://formspree.io/f/abcdefgh'
+
 // DO NOT CHANGE THIS FORMULA:
 function calcFunnel(v, l, c, s, campaignType) {
   const p = PRESETS[campaignType] || PRESETS.link
@@ -38,11 +42,16 @@ function calcFunnel(v, l, c, s, campaignType) {
     paidUsers = installs * p.paidConversion
   }
 
+  // Engagement boost — high-engagement creators drive more conversions (capped 1.8x)
+  const engagementRate  = v > 0 ? (l + c + s) / v : 0
+  const engagementBoost = Math.min(1 + engagementRate * 1.5, 1.8)
+  paidUsers = paidUsers * engagementBoost
+
   const revenue = paidUsers * AVG_LTV
   const payout  = revenue * REV_SHARE
   const cpm     = v > 0 ? payout / (v / 1000) : null
 
-  return { uniqueEngaged, profileClicks, installs, paidUsers, revenue, payout, cpm }
+  return { uniqueEngaged, profileClicks, installs, paidUsers, revenue, payout, cpm, engagementRate }
 }
 
 const fmt2     = (n) => n.toFixed(2)
@@ -68,7 +77,7 @@ export default function App() {
   const s = Math.max(0, parseFloat(shares)   || 0)
   const hasViews = v > 0
 
-  const { uniqueEngaged, profileClicks, installs, paidUsers, revenue, payout, cpm } =
+  const { uniqueEngaged, profileClicks, installs, paidUsers, revenue, payout, cpm, engagementRate } =
     calcFunnel(v, l, c, s, campaignType)
 
   // Range ±25%
@@ -81,16 +90,49 @@ export default function App() {
   const shockLabel  = isUnderpaid ? '🔥 You are likely underpaid' : '✓ You are fairly paid'
   const shockMod    = isUnderpaid ? 'underpaid' : 'fairpaid'
 
-  // Share text
-  const shareText = `I should be making ~${fmtWhole(payout)} per post based on my stats 👀\n\nCheck what you should be earning →`
+  // Engagement badge
+  const engagePct = engagementRate * 100
+  const engageBadge = engagePct >= 10
+    ? { icon: '🔥', label: 'High engagement',     mod: 'high' }
+    : engagePct >= 5
+    ? { icon: '⚖️', label: 'Average engagement',  mod: 'avg'  }
+    : { icon: '⚠️', label: 'Low engagement',      mod: 'low'  }
 
-  const handleEmailSubmit = (e) => {
+  // Share text
+  const shareText = `I just checked how much I should be making as a creator…\n\nTurns out I should be getting ~${fmtWhole(payout)}/post 👀`
+
+  const handleEmailSubmit = async (e) => {
     e.preventDefault()
     const trimmed = email.trim()
     if (!trimmed) return
+
+    const lead = {
+      email:           trimmed,
+      views:           v,
+      likes:           l,
+      comments:        c,
+      shares:          s,
+      calculatedValue: Math.round(payout),
+      ts:              Date.now(),
+    }
+
+    // Always persist locally
     const existing = JSON.parse(localStorage.getItem('creator_leads') || '[]')
-    existing.push({ email: trimmed, payout: Math.round(payout), ts: Date.now() })
+    existing.push(lead)
     localStorage.setItem('creator_leads', JSON.stringify(existing))
+    console.log('New creator lead:', lead)
+
+    // Also POST to Formspree if configured
+    if (FORMSPREE_ENDPOINT) {
+      try {
+        await fetch(FORMSPREE_ENDPOINT, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body:    JSON.stringify(lead),
+        })
+      } catch (_) { /* silent — lead is saved locally regardless */ }
+    }
+
     setEmailSent(true)
   }
 
@@ -100,39 +142,42 @@ export default function App() {
     setTimeout(() => setCopied(false), 2500)
   }
 
-  // Breakdown rows for "See how this was calculated"
+  const handleTwitter = () => {
+    window.open(
+      `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`,
+      '_blank',
+      'noopener,noreferrer'
+    )
+  }
+
+  // Breakdown rows — creator-friendly, no LTV/CAC/revenue share language
   const breakdownRows = [
     {
-      label: 'People who interacted',
-      value: fmtNum(uniqueEngaged),
-      hint:  'Weighted sum of likes, comments, and shares',
+      label: 'Your audience size',
+      value: fmtNum(v),
+      hint:  'Average views per post',
     },
-    ...(campaignType === 'link' ? [{
-      label: 'Estimated profile visitors',
-      value: fmtNum(profileClicks),
-      hint:  '2.5% of viewers click through to the profile',
-    }] : []),
     {
-      label: 'Expected installs',
+      label: 'Your engagement strength',
+      value: `${engagePct.toFixed(1)}%`,
+      hint:  'How often your audience actually reacts',
+    },
+    {
+      label: 'Estimated people interested',
+      value: fmtNum(uniqueEngaged),
+      hint:  'Viewers who liked, commented, or shared',
+    },
+    {
+      label: 'Estimated people who would download',
       value: fmtNum(installs),
       hint:  campaignType === 'link'
-        ? '45% of profile visitors install'
-        : '0.35% of viewers search and install later',
+        ? 'Based on profile visits from your post'
+        : 'Based on viewers who search after seeing your content',
     },
     {
-      label: 'Expected paying customers',
+      label: 'Estimated paying users',
       value: fmtNum(paidUsers),
-      hint:  `${campaignType === 'link' ? '12%' : '10%'} convert to paid${campaignType === 'link' ? ' (+8% bio attribution)' : ''}`,
-    },
-    {
-      label: 'Revenue your content generates',
-      value: fmtWhole(revenue),
-      hint:  `$${fmt2(AVG_LTV)} avg customer lifetime value`,
-    },
-    {
-      label: 'Your fair share (15%)',
-      value: fmtWhole(payout),
-      hint:  'Standard creator revenue share',
+      hint:  'People who convert to a paid plan',
     },
   ]
 
@@ -193,29 +238,45 @@ export default function App() {
       {hasViews ? (
         <div className="output-section">
 
-          <p className="earn-label">You should be earning:</p>
+          {/* Result card — clean, screenshot-friendly */}
+          <div className="result-card">
+            <p className="earn-label">You should be earning</p>
 
-          <div className="earn-range">
-            {fmtWhole(low)} – {fmtWhole(high)}
-            <span className="earn-unit"> per video</span>
-          </div>
-
-          <div className={`shock-badge shock-${shockMod}`}>
-            {shockLabel}
-          </div>
-
-          {offerAmt !== null && offerAmt > 0 && (
-            <div className="offer-compare">
-              Brands are offering you <strong>{fmtWhole(offerAmt)}</strong>
-              {isUnderpaid
-                ? ` — that's ${fmtWhole(payout - offerAmt)} less than you should earn.`
-                : " — that's a fair deal."}
+            <div className="earn-range">
+              {fmtWhole(low)} – {fmtWhole(high)}
+              <span className="earn-unit"> per post</span>
             </div>
-          )}
 
-          <button className="share-btn" onClick={handleShare}>
-            {copied ? '✓ Copied to clipboard!' : 'Share my result 👀'}
-          </button>
+            <p className="earn-sub">Based on your engagement and audience size</p>
+
+            <div className="badges-row">
+              <div className={`engage-badge engage-${engageBadge.mod}`}>
+                {engageBadge.icon} {engageBadge.label}
+              </div>
+              <div className={`shock-badge shock-${shockMod}`}>
+                {shockLabel}
+              </div>
+            </div>
+
+            {offerAmt !== null && offerAmt > 0 && (
+              <div className="offer-compare">
+                Brands are offering you <strong>{fmtWhole(offerAmt)}</strong>
+                {isUnderpaid
+                  ? ` — that's ${fmtWhole(payout - offerAmt)} less than you should earn.`
+                  : " — that's a fair deal."}
+              </div>
+            )}
+          </div>
+
+          {/* Share row */}
+          <div className="share-row">
+            <button className="copy-btn" onClick={handleShare}>
+              {copied ? '✓ Copied!' : 'Copy result'}
+            </button>
+            <button className="twitter-btn" onClick={handleTwitter}>
+              Post on X
+            </button>
+          </div>
 
           {/* ── Email capture ── */}
           <div className="email-capture">
@@ -234,23 +295,24 @@ export default function App() {
                     required
                   />
                   <button type="submit" className="email-btn">
-                    Get matched with opportunities
+                    Get brand deals that actually pay this
                   </button>
+                  <p className="email-urgency">
+                    Early creators will get priority access to brand deals
+                  </p>
                 </form>
               </>
             )}
           </div>
 
           <button className="calc-toggle" onClick={() => setShowCalc(b => !b)}>
-            {showCalc ? 'Hide calculation ▲' : 'See how this was calculated ▼'}
+            {showCalc ? 'Hide breakdown ▲' : "Why you're worth this ▼"}
           </button>
 
           {showCalc && (
             <div className="breakdown-panel">
               <div className="breakdown-note">
-                Based on your content driving app installs at a $
-                {fmt2(AVG_LTV)} average customer lifetime value,
-                with a standard 15% creator revenue share.
+                Here's what your numbers actually mean for a brand running a campaign with you.
               </div>
               {breakdownRows.map(({ label, value, hint }) => (
                 <div key={label} className="b-row">
