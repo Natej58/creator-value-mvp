@@ -105,32 +105,29 @@ export default function App() {
     const trimmed = email.trim()
     if (!trimmed) return
 
-    try {
-      const response = await fetch('https://api.web3forms.com/submit', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          access_key:      WEB3FORMS_KEY,
-          email:           trimmed,
-          avgViews:        v,
-          avgLikes:        l,
-          avgComments:     c,
-          avgShares:       s,
-          calculatedValue: `${fmtWhole(low)} – ${fmtWhole(high)}`,
-        }),
-      })
+    // Show success immediately — don't make the user wait on a network call
+    setEmail('')
+    setEmailSent(true)
 
-      const result = await response.json()
+    // Save locally as backup
+    const existing = JSON.parse(localStorage.getItem('creator_leads') || '[]')
+    existing.push({ email: trimmed, views: v, likes: l, comments: c, shares: s, calculatedValue: `${fmtWhole(low)} – ${fmtWhole(high)}`, ts: Date.now() })
+    localStorage.setItem('creator_leads', JSON.stringify(existing))
 
-      if (result.success) {
-        setEmail('')
-        setEmailSent(true)
-      } else {
-        console.error('Web3Forms submission failed', result)
-      }
-    } catch (error) {
-      console.error('Web3Forms error:', error)
-    }
+    // Fire-and-forget to Web3Forms
+    fetch('https://api.web3forms.com/submit', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        access_key:      WEB3FORMS_KEY,
+        email:           trimmed,
+        avgViews:        v,
+        avgLikes:        l,
+        avgComments:     c,
+        avgShares:       s,
+        calculatedValue: `${fmtWhole(low)} – ${fmtWhole(high)}`,
+      }),
+    }).catch(err => console.error('Web3Forms error:', err))
   }
 
   // Auto-hide success message after 4 seconds
@@ -287,11 +284,8 @@ export default function App() {
           <div className="email-capture">
             {emailSent ? (
               <div className="email-submitted">
-                <div className="check-anim">
-                  <svg viewBox="0 0 52 52" className="check-svg" aria-hidden="true">
-                    <circle cx="26" cy="26" r="24" className="check-ring" />
-                    <path d="M14 27l8 8 16-16" className="check-mark" />
-                  </svg>
+                <div className="check-circle">
+                  <span className="check-icon">✓</span>
                 </div>
                 <p className="submitted-label">Submitted</p>
               </div>
