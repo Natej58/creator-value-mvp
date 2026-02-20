@@ -100,34 +100,25 @@ export default function App() {
   // Share text
   const shareText = `I just checked how much I should be making as a creator…\n\nTurns out I should be getting ~${fmtWhole(payout)}/post 👀`
 
-  const handleEmailSubmit = async (e) => {
+  const handleEmailSubmit = (e) => {
     e.preventDefault()
     const trimmed = email.trim()
     if (!trimmed) return
 
-    // Show success immediately — don't make the user wait on a network call
-    setEmail('')
-    setEmailSent(true)
-
-    // Save locally as backup
     const existing = JSON.parse(localStorage.getItem('creator_leads') || '[]')
-    existing.push({ email: trimmed, views: v, likes: l, comments: c, shares: s, calculatedValue: `${fmtWhole(low)} – ${fmtWhole(high)}`, ts: Date.now() })
+    existing.push({
+      email:           trimmed,
+      views:           v,
+      likes:           l,
+      comments:        c,
+      shares:          s,
+      calculatedValue: `${fmtWhole(low)} – ${fmtWhole(high)}`,
+      ts:              Date.now(),
+    })
     localStorage.setItem('creator_leads', JSON.stringify(existing))
 
-    // Fire-and-forget to Web3Forms
-    fetch('https://api.web3forms.com/submit', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        access_key:      WEB3FORMS_KEY,
-        email:           trimmed,
-        avgViews:        v,
-        avgLikes:        l,
-        avgComments:     c,
-        avgShares:       s,
-        calculatedValue: `${fmtWhole(low)} – ${fmtWhole(high)}`,
-      }),
-    }).catch(err => console.error('Web3Forms error:', err))
+    setEmail('')
+    setEmailSent(true)
   }
 
   // Auto-hide success message after 4 seconds
