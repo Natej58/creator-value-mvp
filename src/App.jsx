@@ -286,7 +286,15 @@ export default function App() {
           {/* ── Email capture ── */}
           <div className="email-capture">
             {emailSent ? (
-              <p className="email-success">✓ You're on the list — we'll be in touch.</p>
+              <div className="email-submitted">
+                <div className="check-anim">
+                  <svg viewBox="0 0 52 52" className="check-svg" aria-hidden="true">
+                    <circle cx="26" cy="26" r="24" className="check-ring" />
+                    <path d="M14 27l8 8 16-16" className="check-mark" />
+                  </svg>
+                </div>
+                <p className="submitted-label">Submitted</p>
+              </div>
             ) : (
               <>
                 <p className="email-heading">Want brands that actually pay this?</p>
